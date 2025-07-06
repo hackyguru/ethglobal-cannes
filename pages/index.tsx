@@ -27,7 +27,7 @@ const WalletConnectedHome = dynamic(() => import('@/components/WalletConnectedHo
               <div className="space-y-8 max-w-2xl">
                 <div className="space-y-4 text-center">
                   <h1 className="text-8xl font-black leading-none tracking-tight" style={{ color: '#1b1b1b', fontFamily: 'VT323, monospace' }}>
-                    GitVault
+                    n GitVault
                   </h1>
                   <p className="text-xl leading-relaxed" style={{ color: '#1b1b1b' }}>
                     Your secure, decentralized code repository platform with blockchain-backed storage and ENS integration.

@@ -507,11 +507,7 @@ const WalletConnectedDashboard = () => {
             
               <div className="flex items-center space-x-4">
                 {/* Network Indicator */}
-                <div className={`px-4 py-2 rounded-full text-xs font-semibold shadow-md ${
-                  isOnBaseSepolia 
-                    ? 'text-white' 
-                    : 'text-white'
-                }`} style={{ backgroundColor: isOnBaseSepolia ? '#9dff00' : '#ff6b6b' }}>
+                <div className="px-4 py-2 rounded-full text-xs font-semibold shadow-md" style={{ backgroundColor: isOnBaseSepolia ? '#9dff00' : '#ff6b6b', color: isOnBaseSepolia ? '#1b1b1b' : '#ffffff' }}>
                   {isSwitchingNetwork ? (
                     <div className="flex items-center space-x-2">
                       <div className="animate-spin rounded-full h-4 w-4 border-2 border-current border-t-transparent"></div>
@@ -519,7 +515,7 @@ const WalletConnectedDashboard = () => {
                     </div>
                   ) : isOnBaseSepolia ? (
                     <div className="flex items-center space-x-2">
-                      <div className="w-2 h-2 bg-white rounded-full"></div>
+                      <div className="w-2 h-2 rounded-full" style={{ backgroundColor: '#1b1b1b' }}></div>
                       <span>Base Sepolia</span>
                     </div>
                   ) : (
@@ -549,21 +545,14 @@ const WalletConnectedDashboard = () => {
                     </div>
                   ) : (
                     <div className="flex items-center space-x-2">
-                      <div className="w-2 h-2 bg-red-400 rounded-full animate-pulse"></div>
+                      <div className="w-2 h-2 rounded-full animate-pulse" style={{ backgroundColor: '#9dff00' }}></div>
                       <span className="text-sm font-mono" style={{ color: '#1b1b1b' }}>{address ? formatAddress(address) : 'No Address'}</span>
-                      <span className="text-xs bg-red-100 px-2 py-1 rounded-full" style={{ color: '#dc2626' }}>Setup Required</span>
+                      <span className="text-xs px-2 py-1 rounded-full" style={{ backgroundColor: '#9dff00', color: '#1b1b1b' }}>Setup Available</span>
                     </div>
                   )}
                 </div>
                 
                 <div className="flex items-center space-x-2">
-                  <button
-                    onClick={() => router.push('/')}
-                    className="px-4 py-2 hover:bg-gray-300/60 rounded-lg transition-all duration-200 text-sm font-medium"
-                    style={{ color: '#1b1b1b' }}
-                  >
-                    Home
-                  </button>
                   <button
                     onClick={handleDisconnect}
                     className="px-4 py-2 text-white rounded-lg transition-all duration-200 text-sm font-medium shadow-md hover:shadow-lg"
@@ -616,7 +605,7 @@ const WalletConnectedDashboard = () => {
         <main className="container mx-auto px-6 py-10">
           {l2PrimaryName || hasSkippedL2Setup ? (
             // Show dashboard content when primary name exists or user has skipped setup
-            <div className="space-y-10">
+            <div className="space-y-10 flex flex-col min-h-screen">
 
               {/* Global Repository Search */}
               <div className="bg-white/70 backdrop-blur-md rounded-3xl shadow-xl border border-gray-300/30 p-8">
@@ -879,7 +868,7 @@ const WalletConnectedDashboard = () => {
               <>
 
                   {/* Text Records Section */}
-                  <div className="bg-white/70 backdrop-blur-md rounded-3xl shadow-xl border border-gray-300/30 p-8">
+                  <div className="bg-white/70 backdrop-blur-md rounded-3xl shadow-xl border border-gray-300/30 p-8 flex-1 flex flex-col">
                     <div className="flex items-center justify-between mb-8">
                       <div className="flex items-center space-x-4">
                         <div className="w-12 h-12 rounded-2xl flex items-center justify-center" style={{ backgroundColor: '#9dff00' }}>
@@ -930,7 +919,7 @@ const WalletConnectedDashboard = () => {
                       </div>
                     ) : Object.keys(textRecords).length > 0 ? (
                     // Show repository cards
-                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 flex-1">
                       {Object.entries(textRecords).map(([key, value]) => (
                         <div key={key} className="group">
                           {isWalrusBlobId(value) ? (
@@ -1040,7 +1029,7 @@ const WalletConnectedDashboard = () => {
                       ))}
                     </div>
                     ) : (
-                      <div className="text-center py-12">
+                      <div className="text-center py-12 flex-1 flex flex-col justify-center">
                         <div className="w-20 h-20 bg-gray-200 rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-lg">
                           <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ color: '#1b1b1b', opacity: 0.5 }}>
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
