@@ -4,7 +4,7 @@ import { baseSepolia } from 'wagmi/chains'
 import { baseSepoliaClient } from './ensUtils'
 
 // GitVault Registry contract address on Base Sepolia
-export const GITVAULT_REGISTRY_CONTRACT = '0x086F0627430E760cC0D849805D2D2849B929ac9b' as Address
+export const GITVAULT_REGISTRY_CONTRACT = '0x1c10424bF8149F7cB10d1989679bfA6933799e4d' as Address
 
 // Fixed owner address as specified
 export const GITVAULT_OWNER = '0x18331B7b011d822F963236d0b6b8775Fb86fc1AF' as Address
@@ -22,8 +22,7 @@ export const GITVAULT_REGISTRY_ABI = [
     anonymous: false,
     inputs: [
       { indexed: true, internalType: 'string', name: 'label', type: 'string' },
-      { indexed: true, internalType: 'address', name: 'owner', type: 'address' },
-      { indexed: true, internalType: 'address', name: 'addr', type: 'address' }
+      { indexed: true, internalType: 'address', name: 'owner', type: 'address' }
     ],
     name: 'NameRegistered',
     type: 'event',
@@ -231,7 +230,20 @@ export const useGetTextRecord = (label: string, key: string) => {
  */
 export const getAllTextRecordsWithValues = async (label: string): Promise<Record<string, string>> => {
   try {
-    // Get both keys and values in one call
+    // First check if the label is available (not registered)
+    const available = await baseSepoliaClient.readContract({
+      address: GITVAULT_REGISTRY_CONTRACT,
+      abi: GITVAULT_REGISTRY_ABI,
+      functionName: 'available',
+      args: [label],
+    }) as boolean
+
+    if (available) {
+      console.log(`Label "${label}" is available (not registered yet)`)
+      return {}
+    }
+
+    // Label is registered, get both keys and values in one call
     const result = await baseSepoliaClient.readContract({
       address: GITVAULT_REGISTRY_CONTRACT,
       abi: GITVAULT_REGISTRY_ABI,
@@ -247,25 +259,10 @@ export const getAllTextRecordsWithValues = async (label: string): Promise<Record
       records[keys[i]] = values[i] || ''
     }
 
+    console.log(`Found ${keys.length} text records for label "${label}"`)
     return records
   } catch (error) {
     console.error('Error getting text records:', error)
-    // Check if the label is available (not registered)
-    try {
-      const available = await baseSepoliaClient.readContract({
-        address: GITVAULT_REGISTRY_CONTRACT,
-        abi: GITVAULT_REGISTRY_ABI,
-        functionName: 'available',
-        args: [label],
-      }) as boolean
-
-      if (available) {
-        console.log(`Label "${label}" is available (not registered yet)`)
-      }
-    } catch (availableError) {
-      console.error('Error checking availability:', availableError)
-    }
-    
     return {}
   }
 }
@@ -274,5 +271,5 @@ export const getAllTextRecordsWithValues = async (label: string): Promise<Record
  * Format subdomain name for display
  */
 export const formatSubdomain = (label: string): string => {
-  return `${label}.gitvault.xyz`
+  return `${label}.gitvault.eth`
 } 

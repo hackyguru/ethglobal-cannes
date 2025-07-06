@@ -3,12 +3,13 @@ import { useAccount, useDisconnect, useChainId, useSwitchChain } from 'wagmi'
 import { useRouter } from 'next/router'
 import { Address } from 'viem'
 import { baseSepolia } from 'wagmi/chains'
-import { resolveL2PrimaryName, formatAddress } from '@/lib/ensUtils'
+import { resolveL2PrimaryName, resolveEnsName, formatAddress, baseSepoliaClient } from '@/lib/ensUtils'
 import { 
   useRegisterSubdomain, 
-  extractLabelFromPrimaryName, 
   formatSubdomain, 
-  getAllTextRecordsWithValues 
+  getAllTextRecordsWithValues,
+  GITVAULT_REGISTRY_CONTRACT,
+  GITVAULT_REGISTRY_ABI
 } from '@/lib/gitVaultContract'
 import SetPrimaryName from '@/components/SetPrimaryName'
 
@@ -27,12 +28,85 @@ const WalletConnectedDashboard = () => {
   const [textRecords, setTextRecords] = useState<Record<string, string>>({})
   const [isLoadingRecords, setIsLoadingRecords] = useState(false)
   const [isSwitchingNetwork, setIsSwitchingNetwork] = useState(false)
+  const [customLabel, setCustomLabel] = useState('')
+  const [isValidLabel, setIsValidLabel] = useState(false)
+  const [registeredLabel, setRegisteredLabel] = useState('')
+  const [hasSkippedL2Setup, setHasSkippedL2Setup] = useState(false)
+  const [isCheckingExistingSubdomain, setIsCheckingExistingSubdomain] = useState(false)
+  const [existingSubdomain, setExistingSubdomain] = useState<string | null>(null)
 
   // Registration hook
   const { register, isPending: isRegisterPending, isSuccess: isRegisterSuccess, error: registerError } = useRegisterSubdomain()
 
   // Check if on correct network
   const isOnBaseSepolia = chainId === baseSepolia.id
+
+  // Validate label input
+  const validateLabel = (label: string) => {
+    // Basic validation: alphanumeric, 3-20 characters, no spaces
+    const isValid = /^[a-zA-Z0-9]{3,20}$/.test(label)
+    setIsValidLabel(isValid)
+    return isValid
+  }
+
+  // Handle label input change
+  const handleLabelChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value.toLowerCase()
+    setCustomLabel(value)
+    validateLabel(value)
+  }
+
+  // Generate default label from wallet address
+  const generateDefaultLabel = (address: string): string => {
+    // Remove '0x' prefix and take first 8 characters
+    return address.slice(2, 10).toLowerCase()
+  }
+
+  // Check if user already has a subdomain
+  const checkExistingSubdomain = async (address: string) => {
+    setIsCheckingExistingSubdomain(true)
+    try {
+      let labelToCheck: string
+      
+      // First try to resolve ENS name from mainnet
+      console.log('Resolving ENS name for address:', address)
+      const ensName = await resolveEnsName(address as Address)
+      
+      if (ensName) {
+        // Use ENS name without .eth suffix as label
+        labelToCheck = ensName.replace(/\.eth$/, '')
+        console.log(`Found ENS name: ${ensName}, using label: ${labelToCheck}`)
+      } else {
+        // Fall back to generated label from wallet address
+        labelToCheck = generateDefaultLabel(address)
+        console.log(`No ENS name found, using generated label: ${labelToCheck}`)
+      }
+      
+      // Check if this label is available on GitVault (if not available, it means it's registered)
+      const isAvailable = await baseSepoliaClient.readContract({
+        address: GITVAULT_REGISTRY_CONTRACT,
+        abi: GITVAULT_REGISTRY_ABI,
+        functionName: 'available',
+        args: [labelToCheck],
+      }) as boolean
+
+      if (!isAvailable) {
+        // Subdomain exists, set it as existing
+        setExistingSubdomain(labelToCheck)
+        setRegisteredLabel(labelToCheck)
+        console.log(`Found existing GitVault subdomain: ${labelToCheck}.gitvault.eth`)
+      } else {
+        // No existing subdomain, user needs to register
+        setExistingSubdomain(null)
+        console.log(`No existing GitVault subdomain for address ${address}`)
+      }
+    } catch (error) {
+      console.error('Error checking existing subdomain:', error)
+      setExistingSubdomain(null)
+    } finally {
+      setIsCheckingExistingSubdomain(false)
+    }
+  }
 
   // Auto-switch to Base Sepolia if not already on it
   useEffect(() => {
@@ -72,39 +146,54 @@ const WalletConnectedDashboard = () => {
         setIsResolvingName(false)
         setIsLoading(false)
       }
+
+      // Check for existing subdomain
+      if (isOnBaseSepolia) {
+        await checkExistingSubdomain(address)
+      }
     }
 
     checkAuthAndName()
-  }, [address, isConnected, router])
+  }, [address, isConnected, router, isOnBaseSepolia])
 
   // Handle registration success
   useEffect(() => {
-    if (isRegisterSuccess && l2PrimaryName) {
+    if (isRegisterSuccess && customLabel) {
       setRegistrationComplete(true)
-      loadTextRecords()
+      setRegisteredLabel(customLabel)
+      loadTextRecords(customLabel)
     }
-  }, [isRegisterSuccess, l2PrimaryName])
+  }, [isRegisterSuccess, customLabel])
+
+  // Load text records when existing subdomain is found
+  useEffect(() => {
+    if (existingSubdomain) {
+      setRegistrationComplete(true)
+      loadTextRecords(existingSubdomain)
+    }
+  }, [existingSubdomain])
 
   // Manual registration function
   const handleRegisterSubdomain = async () => {
-    if (!l2PrimaryName || !address || !isOnBaseSepolia) return
+    if (!customLabel || !address || !isOnBaseSepolia || !isValidLabel) return
     
     try {
-      await register(l2PrimaryName, address as Address)
-      console.log('Manual subdomain registration initiated')
+      // Use just the custom label without any suffix
+      await register(customLabel, address as Address)
+      console.log('Manual subdomain registration initiated with label:', customLabel)
     } catch (error) {
       console.error('Manual registration failed:', error)
     }
   }
 
   // Load text records
-  const loadTextRecords = async () => {
-    if (!l2PrimaryName) return
+  const loadTextRecords = async (label?: string) => {
+    const labelToUse = label || registeredLabel
+    if (!labelToUse) return
     
     setIsLoadingRecords(true)
     try {
-      const label = extractLabelFromPrimaryName(l2PrimaryName)
-      const records = await getAllTextRecordsWithValues(label)
+      const records = await getAllTextRecordsWithValues(labelToUse)
       setTextRecords(records)
     } catch (error) {
       console.error('Error loading text records:', error)
@@ -125,6 +214,10 @@ const WalletConnectedDashboard = () => {
 
   const handleSetupPrimaryName = () => {
     setShowSetPrimaryName(true)
+  }
+
+  const handleSkipL2Setup = () => {
+    setHasSkippedL2Setup(true)
   }
 
   const handlePrimaryNameSet = () => {
@@ -211,10 +304,15 @@ const WalletConnectedDashboard = () => {
                     <span className="text-sm font-medium text-blue-600">{l2PrimaryName}</span>
                     <span className="text-xs text-gray-500">L2</span>
                   </div>
+                ) : hasSkippedL2Setup ? (
+                  <div className="flex items-center space-x-2">
+                    <span className="text-sm text-gray-600">{address ? formatAddress(address) : 'No Address'}</span>
+                    <span className="text-xs text-gray-500">No L2 Name</span>
+                  </div>
                 ) : (
                   <div className="flex items-center space-x-2">
                     <span className="text-sm text-gray-600">{address ? formatAddress(address) : 'No Address'}</span>
-                    <span className="text-xs text-red-500">No L2 Name</span>
+                    <span className="text-xs text-red-500">Setup Required</span>
                   </div>
                 )}
               </div>
@@ -263,8 +361,8 @@ const WalletConnectedDashboard = () => {
 
       {/* Main Content */}
       <main className="container mx-auto px-4 py-8">
-        {l2PrimaryName ? (
-          // Show dashboard content when primary name exists
+        {l2PrimaryName || hasSkippedL2Setup ? (
+          // Show dashboard content when primary name exists or user has skipped setup
           <div className="space-y-8">
             <div className="bg-white rounded-lg shadow-lg p-8">
               <div className="text-center">
@@ -276,63 +374,138 @@ const WalletConnectedDashboard = () => {
                 <h2 className="text-3xl font-bold text-gray-800 mb-4">
                   Welcome to Dashboard
                 </h2>
-                <p className="text-lg text-gray-600 mb-2">
-                  Hello, <span className="font-medium text-blue-600">{l2PrimaryName}</span>!
-                </p>
-                <p className="text-gray-500 mb-4">
-                  Your L2 primary name is set and verified. You have full access to GitVault.
-                </p>
+                {l2PrimaryName ? (
+                  <>
+                    <p className="text-lg text-gray-600 mb-2">
+                      Hello, <span className="font-medium text-blue-600">{l2PrimaryName}</span>!
+                    </p>
+                    <p className="text-gray-500 mb-4">
+                      Your L2 primary name is set and verified. You have full access to GitVault.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-lg text-gray-600 mb-2">
+                      Hello, <span className="font-medium text-blue-600">{address ? formatAddress(address) : 'User'}</span>!
+                    </p>
+                    <p className="text-gray-500 mb-4">
+                      You're using GitVault without an L2 primary name. You can still register subdomains and manage your repositories.
+                    </p>
+                  </>
+                )}
               </div>
             </div>
 
             {/* Registration Section */}
             {!registrationComplete ? (
-              <div className="bg-white rounded-lg shadow-lg p-8">
-                <div className="text-center">
-                  <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                    </svg>
+              // Show loading while checking for existing subdomain
+              isCheckingExistingSubdomain ? (
+                <div className="bg-white rounded-lg shadow-lg p-8">
+                  <div className="text-center">
+                    <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                    </div>
+                    <h3 className="text-2xl font-bold text-gray-800 mb-4">
+                      Checking Your Subdomain
+                    </h3>
+                    <p className="text-gray-600 mb-6">
+                      We're checking if you already have a GitVault subdomain...
+                    </p>
                   </div>
-                  <h3 className="text-2xl font-bold text-gray-800 mb-4">
-                    Register Your GitVault Subdomain
-                  </h3>
-                  <p className="text-gray-600 mb-6 max-w-2xl mx-auto">
-                    Create your GitHub backup subdomain <span className="font-mono text-blue-600">{formatSubdomain(extractLabelFromPrimaryName(l2PrimaryName))}</span> to start managing your repositories and text records.
-                  </p>
-                  
-                  {!isOnBaseSepolia ? (
-                    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
-                      <p className="text-yellow-800 text-sm">
-                        Switch to Base Sepolia network to register your subdomain
-                      </p>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={handleRegisterSubdomain}
-                      disabled={isRegisterPending}
-                      className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {isRegisterPending ? (
-                        <span className="flex items-center justify-center space-x-2">
-                          <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                          <span>Registering Subdomain...</span>
-                        </span>
-                      ) : (
-                        'Register Subdomain'
-                      )}
-                    </button>
-                  )}
-                  
-                  {registerError && (
-                    <div className="mt-4 bg-red-50 border border-red-200 rounded-lg p-4">
-                      <p className="text-red-800 text-sm">
-                        Registration failed: {registerError.message}
-                      </p>
-                    </div>
-                  )}
                 </div>
-              </div>
+              ) : existingSubdomain ? (
+                // Show existing subdomain found message
+                <div className="bg-white rounded-lg shadow-lg p-8">
+                  <div className="text-center">
+                    <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                    </div>
+                    <h3 className="text-2xl font-bold text-gray-800 mb-4">
+                      Subdomain Found!
+                    </h3>
+                    <p className="text-gray-600 mb-6">
+                      You already have a GitVault subdomain: <span className="font-mono text-blue-600">{formatSubdomain(existingSubdomain)}</span>
+                    </p>
+                    <p className="text-gray-500 text-sm">
+                      Loading your text records...
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                // Show registration form for new users
+                <div className="bg-white rounded-lg shadow-lg p-8">
+                  <div className="text-center">
+                    <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                      </svg>
+                    </div>
+                    <h3 className="text-2xl font-bold text-gray-800 mb-4">
+                      Register Your GitVault Subdomain
+                    </h3>
+                    <p className="text-gray-600 mb-6 max-w-2xl mx-auto">
+                      Choose a custom label for your GitHub backup subdomain. It will be created as <span className="font-mono text-blue-600">{customLabel || '[your-label]'}.gitvault.eth</span>
+                    </p>
+                    
+                    {!isOnBaseSepolia ? (
+                      <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
+                        <p className="text-yellow-800 text-sm">
+                          Switch to Base Sepolia network to register your subdomain
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        <div className="max-w-md mx-auto">
+                          <label htmlFor="label-input" className="block text-sm font-medium text-gray-700 mb-2">
+                            Subdomain Label
+                          </label>
+                          <input
+                            id="label-input"
+                            type="text"
+                            value={customLabel}
+                            onChange={handleLabelChange}
+                            placeholder="Enter your label (e.g., myproject)"
+                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                          />
+                          {customLabel && (
+                            <div className="mt-2 text-sm">
+                              {isValidLabel ? (
+                                <p className="text-green-600">✓ Valid label: {customLabel}.gitvault.eth</p>
+                              ) : (
+                                <p className="text-red-600">✗ Label must be 3-20 alphanumeric characters</p>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                        <button
+                          onClick={handleRegisterSubdomain}
+                          disabled={isRegisterPending || !isValidLabel || !customLabel}
+                          className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {isRegisterPending ? (
+                            <span className="flex items-center justify-center space-x-2">
+                              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                              <span>Registering Subdomain...</span>
+                            </span>
+                          ) : (
+                            'Register Subdomain'
+                          )}
+                        </button>
+                      </div>
+                    )}
+                    
+                    {registerError && (
+                      <div className="mt-4 bg-red-50 border border-red-200 rounded-lg p-4">
+                        <p className="text-red-800 text-sm">
+                          Registration failed: {registerError.message}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )
             ) : (
               // Show text records section after successful registration
               <>
@@ -345,7 +518,7 @@ const WalletConnectedDashboard = () => {
                     <h3 className="text-lg font-semibold">Subdomain Registered Successfully!</h3>
                   </div>
                   <p className="text-gray-600">
-                    Your GitHub backup subdomain <span className="font-mono text-blue-600">{formatSubdomain(extractLabelFromPrimaryName(l2PrimaryName))}</span> has been created.
+                    Your GitHub backup subdomain <span className="font-mono text-blue-600">{formatSubdomain(registeredLabel)}</span> has been created.
                   </p>
                 </div>
 
@@ -486,7 +659,7 @@ const WalletConnectedDashboard = () => {
             )}
           </div>
         ) : (
-          // Show primary name setup requirement
+          // Show primary name setup option (optional)
           <div className="flex items-center justify-center min-h-[60vh]">
             <div className="bg-white rounded-lg shadow-lg p-8 max-w-md mx-auto text-center">
               <div className="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -495,16 +668,22 @@ const WalletConnectedDashboard = () => {
                 </svg>
               </div>
               <h2 className="text-2xl font-bold text-gray-800 mb-4">
-                Setup Required
+                L2 Primary Name Setup
               </h2>
               <p className="text-gray-600 mb-6">
-                You need to set up an L2 primary name to access the GitVault dashboard. This ensures secure identity verification.
+                You can set up an L2 primary name for enhanced identity verification, or skip this step and use GitVault with your wallet address.
               </p>
               <button
                 onClick={handleSetupPrimaryName}
                 className="w-full bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium transition-colors mb-4"
               >
                 Set L2 Primary Name
+              </button>
+              <button
+                onClick={handleSkipL2Setup}
+                className="w-full bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-medium transition-colors mb-4"
+              >
+                Skip L2 Setup
               </button>
               <button
                 onClick={() => router.push('/')}

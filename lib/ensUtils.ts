@@ -24,6 +24,32 @@ export const REVERSE_REGISTRAR_ABI = [
   },
 ] as const
 
+// ENS Registry ABI for resolver lookup
+export const ENS_REGISTRY_ABI = [
+  {
+    inputs: [{ name: 'node', type: 'bytes32' }],
+    name: 'resolver',
+    outputs: [{ name: '', type: 'address' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+] as const
+
+// ENS Resolver ABI for name lookup
+export const ENS_RESOLVER_ABI = [
+  {
+    inputs: [{ name: 'node', type: 'bytes32' }],
+    name: 'name',
+    outputs: [{ name: '', type: 'string' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+] as const
+
+// ENS contract addresses
+export const ENS_REGISTRY_ADDRESS = '0x00000000000C2E074eC69A0dFb2997BA6C7d2e1e' as const
+export const ENS_REVERSE_REGISTRAR_ADDRESS = '0x3671aE578E63FdF66ad4F3E12CC0c0d71Ac7510C' as const
+
 // ABI for setting primary names on L2 reverse registrar
 export const REVERSE_REGISTRAR_WRITE_ABI = [
   {
@@ -122,6 +148,61 @@ export const checkL2ContractExists = async (): Promise<boolean> => {
   } catch (error) {
     console.warn('Unable to check L2 contract existence:', error)
     return false
+  }
+}
+
+/**
+ * Resolve ENS name from mainnet for a given address
+ */
+export const resolveEnsName = async (address: Address): Promise<string | null> => {
+  try {
+    console.log(`Resolving ENS name for ${address} on mainnet`)
+    
+    // Create the reverse node for the address
+    // Format: <lowercase-hex-address-without-0x>.addr.reverse
+    const addressWithoutPrefix = address.slice(2).toLowerCase()
+    const reverseNode = keccak256(
+      encodePacked(
+        ['bytes32', 'bytes32'],
+        [
+          keccak256(encodePacked(['string'], [addressWithoutPrefix])),
+          keccak256(encodePacked(['string'], ['addr.reverse']))
+        ]
+      )
+    )
+    
+    console.log(`Reverse node for ${address}:`, reverseNode)
+    
+    // Get the resolver for this reverse node from ENS registry
+    const resolverAddress = await mainnetClient.readContract({
+      address: ENS_REGISTRY_ADDRESS,
+      abi: ENS_REGISTRY_ABI,
+      functionName: 'resolver',
+      args: [reverseNode],
+    }) as Address
+    
+    console.log(`Resolver address for ${address}:`, resolverAddress)
+    
+    // If no resolver is set, return null
+    if (!resolverAddress || resolverAddress === '0x0000000000000000000000000000000000000000') {
+      console.log(`No resolver set for address ${address}`)
+      return null
+    }
+    
+    // Get the name from the resolver
+    const ensName = await mainnetClient.readContract({
+      address: resolverAddress,
+      abi: ENS_RESOLVER_ABI,
+      functionName: 'name',
+      args: [reverseNode],
+    }) as string
+    
+    console.log(`ENS name resolution result for ${address}:`, ensName)
+    
+    return ensName && ensName.length > 0 ? ensName : null
+  } catch (error: any) {
+    console.error('Error resolving ENS name:', error)
+    return null
   }
 }
 
