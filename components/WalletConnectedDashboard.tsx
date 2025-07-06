@@ -35,9 +35,63 @@ const WalletConnectedDashboard = () => {
   const [hasSkippedL2Setup, setHasSkippedL2Setup] = useState(false)
   const [isCheckingExistingSubdomain, setIsCheckingExistingSubdomain] = useState(false)
   const [existingSubdomain, setExistingSubdomain] = useState<string | null>(null)
+  const [subdomainLoadedFromStorage, setSubdomainLoadedFromStorage] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchResults, setSearchResults] = useState<{ subdomain: string; repository: string; blobId: string } | null>(null)
+  const [isSearching, setIsSearching] = useState(false)
+  const [searchError, setSearchError] = useState<string | null>(null)
 
   // Registration hook
   const { register, isPending: isRegisterPending, isSuccess: isRegisterSuccess, error: registerError } = useRegisterSubdomain()
+
+  // LocalStorage keys
+  const SUBDOMAIN_STORAGE_KEY = 'gitvault_registered_subdomain'
+  const WALLET_SUBDOMAIN_KEY = (walletAddress: string) => `gitvault_subdomain_${walletAddress.toLowerCase()}`
+
+  // LocalStorage helpers
+  const saveSubdomainToStorage = (walletAddress: string, subdomain: string) => {
+    try {
+      localStorage.setItem(WALLET_SUBDOMAIN_KEY(walletAddress), subdomain)
+      localStorage.setItem(SUBDOMAIN_STORAGE_KEY, subdomain) // For backward compatibility
+      console.log(`💾 Saved subdomain '${subdomain}' to localStorage for wallet ${walletAddress}`)
+    } catch (error) {
+      console.error('Error saving subdomain to localStorage:', error)
+    }
+  }
+
+  const loadSubdomainFromStorage = (walletAddress: string): string | null => {
+    try {
+      // Try wallet-specific key first
+      const walletSpecificSubdomain = localStorage.getItem(WALLET_SUBDOMAIN_KEY(walletAddress))
+      if (walletSpecificSubdomain) {
+        return walletSpecificSubdomain
+      }
+
+      // Fall back to general key for backward compatibility
+      const generalSubdomain = localStorage.getItem(SUBDOMAIN_STORAGE_KEY)
+      if (generalSubdomain) {
+        // Migrate to wallet-specific storage
+        saveSubdomainToStorage(walletAddress, generalSubdomain)
+        localStorage.removeItem(SUBDOMAIN_STORAGE_KEY)
+        return generalSubdomain
+      }
+
+      return null
+    } catch (error) {
+      console.error('Error loading subdomain from localStorage:', error)
+      return null
+    }
+  }
+
+  const clearSubdomainFromStorage = (walletAddress: string) => {
+    try {
+      localStorage.removeItem(WALLET_SUBDOMAIN_KEY(walletAddress))
+      localStorage.removeItem(SUBDOMAIN_STORAGE_KEY)
+      console.log(`🗑️ Cleared subdomain from localStorage for wallet ${walletAddress}`)
+    } catch (error) {
+      console.error('Error clearing subdomain from localStorage:', error)
+    }
+  }
 
   // Check if on correct network
   const isOnBaseSepolia = chainId === baseSepolia.id
@@ -75,21 +129,53 @@ const WalletConnectedDashboard = () => {
   // Check if user already has a subdomain
   const checkExistingSubdomain = async (address: string) => {
     setIsCheckingExistingSubdomain(true)
+    console.log(`🔍 Checking subdomain for wallet: ${address}`)
+    
     try {
+      // First check localStorage for previously registered subdomain
+      const storedSubdomain = loadSubdomainFromStorage(address)
+      if (storedSubdomain) {
+        console.log(`📱 Found stored subdomain: ${storedSubdomain} for wallet: ${address}`)
+        
+        // Verify the stored subdomain still exists on the blockchain
+        const isAvailable = await baseSepoliaClient.readContract({
+          address: GITVAULT_REGISTRY_CONTRACT,
+          abi: GITVAULT_REGISTRY_ABI,
+          functionName: 'available',
+          args: [storedSubdomain],
+        }) as boolean
+
+        if (!isAvailable) {
+          // Subdomain still exists, use it
+          setExistingSubdomain(storedSubdomain)
+          setRegisteredLabel(storedSubdomain)
+          setSubdomainLoadedFromStorage(true)
+          console.log(`✅ Verified stored subdomain: ${storedSubdomain}.gitvault.eth for wallet: ${address}`)
+          return
+        } else {
+          // Subdomain no longer exists, clear from storage
+          clearSubdomainFromStorage(address)
+          setSubdomainLoadedFromStorage(false)
+          console.log(`❌ Stored subdomain ${storedSubdomain} no longer exists, cleared from storage for wallet: ${address}`)
+        }
+      } else {
+        console.log(`📭 No stored subdomain found for wallet: ${address}`)
+      }
+
       let labelToCheck: string
       
-      // First try to resolve ENS name from mainnet
-      console.log('Resolving ENS name for address:', address)
+      // Try to resolve ENS name from mainnet
+      console.log(`🔍 Resolving ENS name for address: ${address}`)
       const ensName = await resolveEnsName(address as Address)
       
       if (ensName) {
         // Use ENS name without .eth suffix as label
         labelToCheck = ensName.replace(/\.eth$/, '')
-        console.log(`Found ENS name: ${ensName}, using label: ${labelToCheck}`)
+        console.log(`🏷️ Found ENS name: ${ensName}, using label: ${labelToCheck} for wallet: ${address}`)
       } else {
         // Fall back to generated label from wallet address
         labelToCheck = generateDefaultLabel(address)
-        console.log(`No ENS name found, using generated label: ${labelToCheck}`)
+        console.log(`🏷️ No ENS name found, using generated label: ${labelToCheck} for wallet: ${address}`)
       }
       
       // Check if this label is available on GitVault (if not available, it means it's registered)
@@ -101,13 +187,16 @@ const WalletConnectedDashboard = () => {
       }) as boolean
 
       if (!isAvailable) {
-        // Subdomain exists, set it as existing
+        // Subdomain exists, set it as existing and save to storage
         setExistingSubdomain(labelToCheck)
         setRegisteredLabel(labelToCheck)
+        setSubdomainLoadedFromStorage(false) // This was found via blockchain, not storage
+        saveSubdomainToStorage(address, labelToCheck)
         console.log(`Found existing GitVault subdomain: ${labelToCheck}.gitvault.eth`)
       } else {
         // No existing subdomain, user needs to register
         setExistingSubdomain(null)
+        setSubdomainLoadedFromStorage(false)
         console.log(`No existing GitVault subdomain for address ${address}`)
       }
     } catch (error) {
@@ -135,6 +224,27 @@ const WalletConnectedDashboard = () => {
 
     switchToBaseSepolia()
   }, [isConnected, isOnBaseSepolia, switchChain, isSwitchingNetwork])
+
+  // Reset subdomain state when wallet changes
+  useEffect(() => {
+    if (address) {
+      // Clear previous wallet's subdomain state
+      setExistingSubdomain(null)
+      setRegisteredLabel('')
+      setRegistrationComplete(false)
+      setSubdomainLoadedFromStorage(false)
+      setTextRecords({})
+      setCustomLabel('')
+      setIsValidLabel(false)
+      
+      // Clear search state
+      setSearchQuery('')
+      setSearchResults(null)
+      setSearchError(null)
+      
+      console.log(`🔄 Wallet changed to: ${address}`)
+    }
+  }, [address])
 
   // Check authentication and resolve primary name
   useEffect(() => {
@@ -168,12 +278,14 @@ const WalletConnectedDashboard = () => {
 
   // Handle registration success
   useEffect(() => {
-    if (isRegisterSuccess && customLabel) {
+    if (isRegisterSuccess && customLabel && address) {
       setRegistrationComplete(true)
       setRegisteredLabel(customLabel)
+      // Save the registered subdomain to localStorage
+      saveSubdomainToStorage(address, customLabel)
       loadTextRecords(customLabel)
     }
-  }, [isRegisterSuccess, customLabel])
+  }, [isRegisterSuccess, customLabel, address])
 
   // Load text records when existing subdomain is found
   useEffect(() => {
@@ -218,6 +330,22 @@ const WalletConnectedDashboard = () => {
   }
 
   const handleDisconnect = () => {
+    // Clear all subdomain state when disconnecting
+    setExistingSubdomain(null)
+    setRegisteredLabel('')
+    setRegistrationComplete(false)
+    setSubdomainLoadedFromStorage(false)
+    setTextRecords({})
+    setCustomLabel('')
+    setIsValidLabel(false)
+    setL2PrimaryName(null)
+    
+    // Clear search state
+    setSearchQuery('')
+    setSearchResults(null)
+    setSearchError(null)
+    
+    console.log('🔌 Wallet disconnected, cleared all state')
     disconnect()
     router.push('/')
   }
@@ -241,6 +369,74 @@ const WalletConnectedDashboard = () => {
         })
         .finally(() => setIsResolvingName(false))
     }
+  }
+
+  // Clear stored subdomain and force re-registration
+  const handleClearStoredSubdomain = () => {
+    if (address) {
+      clearSubdomainFromStorage(address)
+      setExistingSubdomain(null)
+      setRegisteredLabel('')
+      setRegistrationComplete(false)
+      setSubdomainLoadedFromStorage(false)
+      setTextRecords({})
+    }
+  }
+
+  // Search for repository across subdomains
+  const handleSearch = async () => {
+    if (!searchQuery.trim()) {
+      setSearchError('Please enter a search query')
+      return
+    }
+
+    // Parse query in format "subdomain/repository"
+    const parts = searchQuery.trim().split('/')
+    if (parts.length !== 2) {
+      setSearchError('Please use format: subdomain/repository (e.g., hackyguru/walrus-action-test)')
+      return
+    }
+
+    const [subdomain, repository] = parts
+    if (!subdomain || !repository) {
+      setSearchError('Both subdomain and repository name are required')
+      return
+    }
+
+    setIsSearching(true)
+    setSearchError(null)
+    setSearchResults(null)
+
+    try {
+      console.log(`🔍 Searching for repository: ${repository} in subdomain: ${subdomain}`)
+      
+      // Get text records for the target subdomain
+      const records = await getAllTextRecordsWithValues(subdomain)
+      console.log(`📋 Found ${Object.keys(records).length} records in ${subdomain}.gitvault.eth`)
+
+      // Look for the specific repository
+      const blobId = records[repository]
+      if (blobId && isWalrusBlobId(blobId)) {
+        setSearchResults({ subdomain, repository, blobId })
+        console.log(`✅ Found repository ${repository} with blob ID: ${blobId}`)
+      } else if (blobId) {
+        setSearchError(`Found record for "${repository}" but it doesn't appear to be a valid Walrus blob ID`)
+      } else {
+        setSearchError(`Repository "${repository}" not found in ${subdomain}.gitvault.eth`)
+      }
+    } catch (error) {
+      console.error('Search error:', error)
+      setSearchError(`Error searching: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    } finally {
+      setIsSearching(false)
+    }
+  }
+
+  // Clear search results
+  const handleClearSearch = () => {
+    setSearchQuery('')
+    setSearchResults(null)
+    setSearchError(null)
   }
 
   // Show loading while checking authentication
@@ -406,6 +602,99 @@ const WalletConnectedDashboard = () => {
               </div>
             </div>
 
+            {/* Global Repository Search */}
+            <div className="bg-white rounded-lg shadow-lg p-6">
+              <h3 className="text-lg font-semibold text-gray-800 mb-4">🔍 Search Repositories</h3>
+              <p className="text-sm text-gray-600 mb-4">
+                Search for repositories across all GitVault subdomains. Use format: <code className="bg-gray-100 px-1 rounded">subdomain/repository</code>
+              </p>
+              
+              <div className="flex space-x-3">
+                <div className="flex-1">
+                  <input
+                    type="text"
+                    placeholder="e.g., hackyguru/walrus-action-test"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    disabled={isSearching}
+                  />
+                </div>
+                <button
+                  onClick={handleSearch}
+                  disabled={isSearching || !searchQuery.trim()}
+                  className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors disabled:opacity-50"
+                >
+                  {isSearching ? (
+                    <div className="flex items-center space-x-2">
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                      <span>Searching...</span>
+                    </div>
+                  ) : (
+                    'Search'
+                  )}
+                </button>
+                {(searchResults || searchError) && (
+                  <button
+                    onClick={handleClearSearch}
+                    className="px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg transition-colors"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+
+              {/* Search Error */}
+              {searchError && (
+                <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+                  <div className="flex items-center space-x-2 text-red-700">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span className="text-sm">{searchError}</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Search Results */}
+              {searchResults && (
+                <div className="mt-6 border rounded-lg bg-gray-50 overflow-hidden">
+                  {/* Header */}
+                  <div className="px-4 py-3 bg-green-50 border-b border-green-200">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-3">
+                        <div className="flex items-center space-x-2">
+                          <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          <span className="text-sm font-medium text-green-800">Found Repository</span>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <span className="text-sm font-medium text-gray-700">Repository:</span>
+                          <code className="text-sm bg-white px-2 py-1 rounded font-mono border">
+                            {searchResults.subdomain}/{searchResults.repository}
+                          </code>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="mt-2 text-xs text-gray-600">
+                      <span className="font-medium">Subdomain:</span> {searchResults.subdomain}.gitvault.eth • 
+                      <span className="font-medium ml-2">Blob ID:</span> {searchResults.blobId}
+                    </div>
+                  </div>
+
+                  {/* Repository Content */}
+                  <div className="p-4">
+                    <WalrusCodebaseBrowser 
+                      blobId={searchResults.blobId} 
+                      className="border-0 shadow-none bg-white"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* Registration Section */}
             {!registrationComplete ? (
               // Show loading while checking for existing subdomain
@@ -521,21 +810,55 @@ const WalletConnectedDashboard = () => {
               <>
                 {/* Registration Success */}
                 <div className="bg-white rounded-lg shadow-lg p-6">
-                  <div className="flex items-center space-x-3 text-green-600 mb-4">
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
-                    <h3 className="text-lg font-semibold">Subdomain Registered Successfully!</h3>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-3 text-green-600 mb-4">
+                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                      <h3 className="text-lg font-semibold">
+                        {subdomainLoadedFromStorage ? 'Subdomain Restored from Storage!' : 'Subdomain Registered Successfully!'}
+                      </h3>
+                    </div>
+                    {subdomainLoadedFromStorage && (
+                      <button
+                        onClick={handleClearStoredSubdomain}
+                        className="text-xs text-gray-500 hover:text-red-500 transition-colors"
+                        title="Clear stored subdomain and register a new one"
+                      >
+                        Clear & Re-register
+                      </button>
+                    )}
                   </div>
-                  <p className="text-gray-600">
-                    Your GitHub backup subdomain <span className="font-mono text-blue-600">{formatSubdomain(registeredLabel)}</span> has been created.
-                  </p>
+                  <div className="space-y-2">
+                    <p className="text-gray-600">
+                      Your GitHub backup subdomain <span className="font-mono text-blue-600">{formatSubdomain(registeredLabel)}</span> {subdomainLoadedFromStorage ? 'has been restored from your browser storage' : 'has been created'}.
+                    </p>
+                    <div className="flex items-center space-x-2 text-sm text-gray-500">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v2a2 2 0 002 2z" />
+                      </svg>
+                      <span>Linked to wallet: {address ? formatAddress(address) : 'Unknown'}</span>
+                    </div>
+                    {subdomainLoadedFromStorage && (
+                      <div className="flex items-center space-x-2 text-sm text-blue-600">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                        <span>Automatically restored from previous session</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 {/* Text Records Section */}
                 <div className="bg-white rounded-lg shadow-lg p-6">
                   <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-xl font-semibold text-gray-800">Text Records</h3>
+                    <div>
+                      <h3 className="text-xl font-semibold text-gray-800">Text Records</h3>
+                      <p className="text-xs text-gray-500 mt-1">
+                        Repository backups for <span className="font-mono">{formatSubdomain(registeredLabel)}</span>
+                      </p>
+                    </div>
                     <button
                       onClick={handleRefreshRecords}
                       disabled={isLoadingRecords || !isOnBaseSepolia}
@@ -624,81 +947,16 @@ const WalletConnectedDashboard = () => {
                     </svg>
                       <p>No text records found</p>
                       <p className="text-sm">Records will appear here once your subdomain is configured with data.</p>
+                      <p className="text-xs text-gray-400 mt-2">
+                        💡 Tip: Each wallet has its own subdomain and repositories
+                      </p>
                     </div>
                   )}
                 </div>
               </>
             )}
 
-            {/* Dashboard Features - only show after registration */}
-            {registrationComplete && (
-              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-                <div className="bg-white rounded-lg shadow-lg p-6">
-                  <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mb-4">
-                    <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-2M7 21V3a2 2 0 012-2h0a2 2 0 012 2v18M15 21h-2m2 0v-7" />
-                    </svg>
-                  </div>
-                  <h3 className="text-lg font-semibold text-gray-800 mb-2">Repositories</h3>
-                  <p className="text-gray-600 text-sm">Manage your Git repositories</p>
-                  <button className="mt-4 w-full bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-lg transition-colors">
-                    View Repositories
-                  </button>
-                </div>
 
-                <div className="bg-white rounded-lg shadow-lg p-6">
-                  <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mb-4">
-                    <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                    </svg>
-                  </div>
-                  <h3 className="text-lg font-semibold text-gray-800 mb-2">New Repository</h3>
-                  <p className="text-gray-600 text-sm">Create a new repository</p>
-                  <button className="mt-4 w-full bg-green-600 hover:bg-green-700 text-white py-2 px-4 rounded-lg transition-colors">
-                    Create Repository
-                  </button>
-                </div>
-
-                <div className="bg-white rounded-lg shadow-lg p-6">
-                  <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center mb-4">
-                    <svg className="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                    </svg>
-                  </div>
-                  <h3 className="text-lg font-semibold text-gray-800 mb-2">Settings</h3>
-                  <p className="text-gray-600 text-sm">Configure your account</p>
-                  <button className="mt-4 w-full bg-purple-600 hover:bg-purple-700 text-white py-2 px-4 rounded-lg transition-colors">
-                    Open Settings
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Stats - only show after registration */}
-            {registrationComplete && (
-              <div className="bg-white rounded-lg shadow-lg p-6">
-                <h3 className="text-lg font-semibold text-gray-800 mb-4">Account Overview</h3>
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-blue-600">{Object.keys(textRecords).length}</div>
-                    <div className="text-sm text-gray-500">Text Records</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-green-600">0</div>
-                    <div className="text-sm text-gray-500">Repositories</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-purple-600">0</div>
-                    <div className="text-sm text-gray-500">Commits</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-orange-600">0</div>
-                    <div className="text-sm text-gray-500">Storage Used</div>
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
         ) : (
           // Show primary name setup option (optional)
