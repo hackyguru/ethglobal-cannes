@@ -1,0 +1,267 @@
+name: Upload Codebase to Walrus
+
+on:
+  push:
+    branches: [ "**" ]  # Trigger on push to any branch
+
+jobs:
+  upload-to-walrus:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Fetch full history to ensure we get all files
+
+    - name: Create codebase JSON
+      run: |
+        # Create a JSON structure containing all codebase files
+        # This allows easy frontend parsing and file preview
+        
+        # Install jq for JSON processing
+        sudo apt-get update && sudo apt-get install -y jq
+        
+        # Create the JSON structure
+        cat > create_codebase_json.py << 'EOF'
+        import json
+        import os
+        import base64
+        from datetime import datetime
+        import mimetypes
+        
+        def should_exclude(file_path):
+            """Check if file should be excluded"""
+            excluded_dirs = {'.git', '.github', 'node_modules', '.next', 'dist', 'build', '__pycache__'}
+            excluded_extensions = {'.log', '.tmp', '.temp', '.lock', '.cache'}
+            excluded_files = {'.DS_Store', 'Thumbs.db', '.env', '.env.local'}
+            
+            # Check if any parent directory is excluded
+            path_parts = file_path.split(os.sep)
+            if any(part in excluded_dirs for part in path_parts):
+                return True
+            
+            # Check file extension
+            _, ext = os.path.splitext(file_path)
+            if ext in excluded_extensions:
+                return True
+            
+            # Check filename
+            filename = os.path.basename(file_path)
+            if filename in excluded_files:
+                return True
+            
+            return False
+        
+        def is_binary_file(file_path):
+            """Check if file is binary"""
+            try:
+                with open(file_path, 'rb') as f:
+                    chunk = f.read(1024)
+                    return b'\0' in chunk
+            except:
+                return True
+        
+        def get_file_content(file_path):
+            """Get file content as text or base64 for binary files"""
+            try:
+                if is_binary_file(file_path):
+                    with open(file_path, 'rb') as f:
+                        content = base64.b64encode(f.read()).decode('utf-8')
+                        return content, 'binary'
+                else:
+                    with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                        content = f.read()
+                        return content, 'text'
+            except Exception as e:
+                return f"Error reading file: {str(e)}", 'error'
+        
+        # Initialize the JSON structure
+        codebase_data = {
+            "metadata": {
+                "timestamp": datetime.utcnow().isoformat() + "Z",
+                "repository": os.environ.get('GITHUB_REPOSITORY', 'unknown'),
+                "branch": os.environ.get('GITHUB_REF_NAME', 'unknown'),
+                "commit": os.environ.get('GITHUB_SHA', 'unknown'),
+                "total_files": 0,
+                "total_size": 0
+            },
+            "files": {}
+        }
+        
+        # Walk through all files
+        for root, dirs, files in os.walk('.'):
+            # Skip excluded directories
+            dirs[:] = [d for d in dirs if not should_exclude(os.path.join(root, d))]
+            
+            for file in files:
+                file_path = os.path.join(root, file)
+                relative_path = os.path.relpath(file_path, '.')
+                
+                # Skip excluded files
+                if should_exclude(relative_path):
+                    continue
+                
+                # Get file info
+                try:
+                    file_stats = os.stat(file_path)
+                    file_size = file_stats.st_size
+                    
+                    # Skip very large files (> 1MB)
+                    if file_size > 1024 * 1024:
+                        continue
+                    
+                    content, content_type = get_file_content(file_path)
+                    mime_type, _ = mimetypes.guess_type(file_path)
+                    
+                    codebase_data["files"][relative_path] = {
+                        "content": content,
+                        "content_type": content_type,
+                        "mime_type": mime_type or "application/octet-stream",
+                        "size": file_size,
+                        "modified": datetime.fromtimestamp(file_stats.st_mtime).isoformat() + "Z"
+                    }
+                    
+                    codebase_data["metadata"]["total_files"] += 1
+                    codebase_data["metadata"]["total_size"] += file_size
+                    
+                except Exception as e:
+                    print(f"Error processing {relative_path}: {e}")
+                    continue
+        
+        # Write JSON to file
+        with open('codebase.json', 'w', encoding='utf-8') as f:
+            json.dump(codebase_data, f, indent=2, ensure_ascii=False)
+        
+        print(f"✅ Created codebase.json with {codebase_data['metadata']['total_files']} files")
+        print(f"📦 Total size: {codebase_data['metadata']['total_size']} bytes")
+        EOF
+        
+        # Run the Python script
+        python3 create_codebase_json.py
+        
+        # Display JSON info
+        echo "JSON structure created: codebase.json"
+        ls -lh codebase.json
+        
+    - name: Upload to Walrus
+      run: |
+        # Upload the JSON to Walrus
+        response=$(curl -X PUT \
+          "https://publisher.walrus-testnet.walrus.space/v1/blobs?encoding_type=RS2&epochs=1&deletable=false&force=true" \
+          -H "Content-Type: application/json" \
+          --data-binary @codebase.json \
+          -w "%{http_code}" \
+          -o response.json)
+        
+        # Check if upload was successful
+        if [ "$response" -eq 200 ]; then
+          echo "✅ Successfully uploaded codebase to Walrus!"
+          echo "Response:"
+          cat response.json | jq '.' || cat response.json
+          
+          # Debug: Show raw response structure
+          echo "🔍 Debug - Raw response structure:"
+          cat response.json
+          echo ""
+          
+          # Extract blob ID from the correct location
+          blob_id=""
+          
+          # Method 1: Try newlyCreated.blobObject.blobId (for new blobs)
+          blob_id=$(cat response.json | jq -r '.newlyCreated.blobObject.blobId // empty' 2>/dev/null)
+          if [ ! -z "$blob_id" ] && [ "$blob_id" != "null" ] && [ "$blob_id" != "empty" ]; then
+            echo "🎯 Found blob ID in newlyCreated.blobObject: $blob_id"
+          else
+            # Method 2: Try alreadyCertified.blobObject.blobId (for existing blobs)
+            blob_id=$(cat response.json | jq -r '.alreadyCertified.blobObject.blobId // empty' 2>/dev/null)
+            if [ ! -z "$blob_id" ] && [ "$blob_id" != "null" ] && [ "$blob_id" != "empty" ]; then
+              echo "🎯 Found blob ID in alreadyCertified.blobObject: $blob_id"
+            else
+              # Method 3: Try legacy paths for backward compatibility
+              blob_id=$(cat response.json | jq -r '.newlyCreated.blobId // .alreadyCertified.blobId // .blobId // empty' 2>/dev/null)
+              if [ ! -z "$blob_id" ] && [ "$blob_id" != "null" ] && [ "$blob_id" != "empty" ]; then
+                echo "🎯 Found blob ID in legacy location: $blob_id"
+              fi
+            fi
+          fi
+          
+          if [ ! -z "$blob_id" ] && [ "$blob_id" != "null" ] && [ "$blob_id" != "empty" ]; then
+            echo "✅ Extracted Blob ID: $blob_id"
+            echo "📄 Access your codebase at: https://aggregator.walrus-testnet.walrus.space/v1/$blob_id"
+            
+            # Export blob_id for the next step
+            echo "WALRUS_BLOB_ID=$blob_id" >> $GITHUB_ENV
+          else
+            echo "❌ Failed to extract blob ID from response"
+            echo "🔍 Available fields in response:"
+            cat response.json | jq 'keys' 2>/dev/null || echo "Could not parse JSON keys"
+            exit 1
+          fi
+        else
+          echo "❌ Failed to upload to Walrus. HTTP Status: $response"
+          echo "Response:"
+          cat response.json
+          exit 1
+        fi
+        
+    - name: Update ENS Text Record
+      run: |
+        # Extract repository information
+        REPO_NAME="${GITHUB_REPOSITORY#*/}"  # Get repository name without owner
+        GITHUB_USERNAME="${GITHUB_REPOSITORY%/*}"  # Get GitHub username
+        
+        echo "📝 Updating ENS text record via server..."
+        echo "Label (GitHub username): $GITHUB_USERNAME"
+        echo "Repository: $REPO_NAME"
+        echo "CID (Blob ID): $WALRUS_BLOB_ID"
+        
+        # Call the ENS update server (hardcoded URL)
+        # TODO: Replace with your ngrok URL (e.g., https://23da-83-144-23-157.ngrok-free.app)
+        # For production, replace with your deployed server URL
+        ENS_SERVER_URL="https://23da-83-144-23-157.ngrok-free.app"
+        
+        response=$(curl -X POST \
+          "$ENS_SERVER_URL/api/update-ens" \
+          -H "Content-Type: application/json" \
+          -d "{
+            \"label\": \"$GITHUB_USERNAME\",
+            \"repository\": \"$REPO_NAME\",
+            \"cid\": \"$WALRUS_BLOB_ID\"
+          }" \
+          -w "%{http_code}" \
+          -o ens_response.json)
+        
+        # Check if the request was successful
+        if [ "$response" -eq 200 ]; then
+          echo "✅ Successfully updated ENS text record!"
+          echo "Response:"
+          cat ens_response.json | jq '.' || cat ens_response.json
+          
+          # Extract transaction hash if available
+          tx_hash=$(cat ens_response.json | jq -r '.data.transactionHash // empty')
+          if [ ! -z "$tx_hash" ]; then
+            echo "🔗 Transaction hash: $tx_hash"
+            echo "🌐 View on Base Sepolia: https://sepolia.basescan.org/tx/$tx_hash"
+          fi
+        else
+          echo "❌ Failed to update ENS text record. HTTP Status: $response"
+          echo "Response:"
+          cat ens_response.json
+          exit 1
+        fi
+        
+    - name: Display upload summary
+      if: success()
+      run: |
+        echo "🎉 Codebase upload completed successfully!"
+        echo "Repository: ${{ github.repository }}"
+        echo "Branch: ${{ github.ref_name }}"
+        echo "Commit: ${{ github.sha }}"
+        echo "Timestamp: $(date -u)"
+        
+    - name: Clean up
+      if: always()
+      run: |
+        # Remove temporary files
+        rm -f codebase.json response.json create_codebase_json.py ens_response.json 
