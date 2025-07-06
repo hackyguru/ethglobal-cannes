@@ -12,6 +12,7 @@ import {
   GITVAULT_REGISTRY_ABI
 } from '@/lib/gitVaultContract'
 import SetPrimaryName from '@/components/SetPrimaryName'
+import WalrusCodebaseBrowser from '@/components/WalrusCodebaseBrowser'
 
 const WalletConnectedDashboard = () => {
   const { address, isConnected } = useAccount()
@@ -60,6 +61,15 @@ const WalletConnectedDashboard = () => {
   const generateDefaultLabel = (address: string): string => {
     // Remove '0x' prefix and take first 8 characters
     return address.slice(2, 10).toLowerCase()
+  }
+
+  // Helper function to detect if a value is likely a Walrus blob ID
+  const isWalrusBlobId = (value: string): boolean => {
+    // Walrus blob IDs are typically base64-like strings with specific patterns
+    // They contain letters, numbers, hyphens, and underscores
+    // Usually around 40-50 characters long
+    const blobIdPattern = /^[A-Za-z0-9_-]{30,60}$/
+    return blobIdPattern.test(value)
   }
 
   // Check if user already has a subdomain
@@ -555,22 +565,54 @@ const WalletConnectedDashboard = () => {
                       <span className="ml-2 text-gray-600">Loading text records...</span>
                     </div>
                   ) : Object.keys(textRecords).length > 0 ? (
-                    <div className="space-y-3">
+                    <div className="space-y-6">
                       {Object.entries(textRecords).map(([key, value]) => (
-                        <div key={key} className="border rounded-lg p-4 bg-gray-50">
-                          <div className="flex items-start justify-between">
-                            <div className="flex-1">
-                              <div className="flex items-center space-x-2 mb-2">
-                                <span className="text-sm font-medium text-gray-700">Key:</span>
-                                <code className="text-sm bg-gray-200 px-2 py-1 rounded">{key}</code>
-                              </div>
-                              <div className="flex items-start space-x-2">
-                                <span className="text-sm font-medium text-gray-700 mt-1">Value:</span>
-                                <div className="flex-1">
-                                  <code className="text-sm bg-white border px-3 py-2 rounded w-full block break-all">{value}</code>
+                        <div key={key} className="border rounded-lg bg-gray-50 overflow-hidden">
+                          {/* Header */}
+                          <div className="px-4 py-3 bg-gray-100 border-b">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center space-x-3">
+                                <div className="flex items-center space-x-2">
+                                  <span className="text-sm font-medium text-gray-700">Repository:</span>
+                                  <code className="text-sm bg-gray-200 px-2 py-1 rounded font-mono">{key}</code>
                                 </div>
+                                {isWalrusBlobId(value) && (
+                                  <div className="flex items-center space-x-1 text-green-600">
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                    </svg>
+                                    <span className="text-xs font-medium">Backed up</span>
+                                  </div>
+                                )}
                               </div>
                             </div>
+                          </div>
+
+                          {/* Content */}
+                          <div className="p-4">
+                            {isWalrusBlobId(value) ? (
+                              <div className="space-y-3">
+                                <div className="text-sm text-gray-600 mb-4">
+                                  <div className="flex items-center space-x-2">
+                                    <span className="font-medium">Walrus Blob ID:</span>
+                                    <code className="bg-gray-200 px-2 py-1 rounded text-xs font-mono">{value}</code>
+                                  </div>
+                                </div>
+                                <WalrusCodebaseBrowser 
+                                  blobId={value} 
+                                  className="border-0 shadow-none bg-white"
+                                />
+                              </div>
+                            ) : (
+                              <div className="space-y-2">
+                                <div className="flex items-start space-x-2">
+                                  <span className="text-sm font-medium text-gray-700 mt-1">Value:</span>
+                                  <div className="flex-1">
+                                    <code className="text-sm bg-white border px-3 py-2 rounded w-full block break-all">{value}</code>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
                           </div>
                         </div>
                       ))}

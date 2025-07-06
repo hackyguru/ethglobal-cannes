@@ -41,6 +41,17 @@ interface WalrusCodebaseBrowserProps {
   className?: string
 }
 
+interface FileTreeNode {
+  name: string
+  path: string
+  type: 'file' | 'folder'
+  size?: number
+  mimeType?: string
+  contentType?: 'text' | 'binary' | 'error'
+  modified?: string
+  children?: FileTreeNode[]
+}
+
 const WalrusCodebaseBrowser: React.FC<WalrusCodebaseBrowserProps> = ({ blobId, className = '' }) => {
   const [codebaseData, setCodebaseData] = useState<CodebaseData | null>(null)
   const [selectedFile, setSelectedFile] = useState<FileData | null>(null)
@@ -48,6 +59,7 @@ const WalrusCodebaseBrowser: React.FC<WalrusCodebaseBrowserProps> = ({ blobId, c
   const [isLoadingFile, setIsLoadingFile] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set())
 
   // Load codebase overview
   useEffect(() => {
@@ -76,6 +88,27 @@ const WalrusCodebaseBrowser: React.FC<WalrusCodebaseBrowserProps> = ({ blobId, c
     }
   }, [blobId])
 
+  // Auto-expand root folders when codebase data loads
+  useEffect(() => {
+    if (codebaseData && codebaseData.files.length > 0) {
+      const rootFolders = new Set<string>()
+      
+      codebaseData.files.forEach(file => {
+        const parts = file.path.split('/')
+        if (parts.length > 1) {
+          // Add first level folder
+          rootFolders.add(parts[0])
+          // Also add second level if it exists (for better UX)
+          if (parts.length > 2) {
+            rootFolders.add(`${parts[0]}/${parts[1]}`)
+          }
+        }
+      })
+      
+      setExpandedFolders(rootFolders)
+    }
+  }, [codebaseData])
+
   // Load specific file content
   const handleFileSelect = async (filePath: string) => {
     try {
@@ -97,16 +130,79 @@ const WalrusCodebaseBrowser: React.FC<WalrusCodebaseBrowserProps> = ({ blobId, c
     }
   }
 
+  // Build file tree structure
+  const buildFileTree = (files: FileInfo[]): FileTreeNode[] => {
+    const tree: FileTreeNode[] = []
+    const nodeMap = new Map<string, FileTreeNode>()
+
+    // Sort files by path to ensure consistent ordering
+    const sortedFiles = [...files].sort((a, b) => a.path.localeCompare(b.path))
+
+    sortedFiles.forEach(file => {
+      const parts = file.path.split('/')
+      let currentPath = ''
+
+      parts.forEach((part, index) => {
+        const previousPath = currentPath
+        currentPath = currentPath ? `${currentPath}/${part}` : part
+        
+        if (!nodeMap.has(currentPath)) {
+          const isFile = index === parts.length - 1
+          const node: FileTreeNode = {
+            name: part,
+            path: currentPath,
+            type: isFile ? 'file' : 'folder',
+            children: isFile ? undefined : []
+          }
+
+          if (isFile) {
+            node.size = file.size
+            node.mimeType = file.mimeType
+            node.contentType = file.contentType
+            node.modified = file.modified
+          }
+
+          nodeMap.set(currentPath, node)
+
+          if (previousPath) {
+            const parentNode = nodeMap.get(previousPath)
+            if (parentNode && parentNode.children) {
+              parentNode.children.push(node)
+            }
+          } else {
+            tree.push(node)
+          }
+        }
+      })
+    })
+
+    return tree
+  }
+
   // Filter files based on search term
   const filteredFiles = codebaseData?.files.filter(file =>
     file.path.toLowerCase().includes(searchTerm.toLowerCase())
   ) || []
+
+  // Build tree structure
+  const fileTree = buildFileTree(searchTerm ? filteredFiles : codebaseData?.files || [])
 
   // Format file size
   const formatFileSize = (bytes: number): string => {
     if (bytes < 1024) return `${bytes} B`
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  }
+
+  // Toggle folder expansion
+  const toggleFolder = (folderPath: string) => {
+    const newExpanded = new Set(expandedFolders)
+    if (newExpanded.has(folderPath)) {
+      newExpanded.delete(folderPath)
+    } else {
+      newExpanded.add(folderPath)
+    }
+    setExpandedFolders(newExpanded)
   }
 
   // Get file type icon
@@ -135,6 +231,65 @@ const WalrusCodebaseBrowser: React.FC<WalrusCodebaseBrowserProps> = ({ blobId, c
         return '📕'
       default:
         return '📄'
+    }
+  }
+
+  // Get folder icon
+  const getFolderIcon = (isExpanded: boolean): string => {
+    return isExpanded ? '📂' : '📁'
+  }
+
+  // Recursive tree renderer
+  const renderTreeNode = (node: FileTreeNode, depth: number = 0): React.ReactNode => {
+    const isExpanded = expandedFolders.has(node.path)
+    const paddingLeft = depth * 16
+
+    if (node.type === 'folder') {
+      return (
+        <div key={node.path}>
+          <div
+            onClick={() => toggleFolder(node.path)}
+            className="p-2 cursor-pointer hover:bg-gray-50 transition-colors flex items-center"
+            style={{ paddingLeft: paddingLeft + 8 }}
+          >
+            <span className="text-lg mr-2">{getFolderIcon(isExpanded)}</span>
+            <span className="text-sm font-medium text-gray-700">{node.name}</span>
+            {node.children && (
+              <span className="ml-auto text-xs text-gray-400">
+                {node.children.length} items
+              </span>
+            )}
+          </div>
+          {isExpanded && node.children && (
+            <div>
+              {node.children.map(child => renderTreeNode(child, depth + 1))}
+            </div>
+          )}
+        </div>
+      )
+    } else {
+      return (
+        <div
+          key={node.path}
+          onClick={() => handleFileSelect(node.path)}
+          className={`p-2 cursor-pointer hover:bg-gray-50 transition-colors flex items-center ${
+            selectedFile?.filePath === node.path ? 'bg-blue-50 border-r-2 border-blue-500' : ''
+          }`}
+          style={{ paddingLeft: paddingLeft + 8 }}
+        >
+          <span className="text-lg mr-2">{getFileIcon(node.path)}</span>
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-medium text-gray-900 truncate">
+              {node.name}
+            </div>
+            {node.size && (
+              <div className="text-xs text-gray-400">
+                {formatFileSize(node.size)}
+              </div>
+            )}
+          </div>
+        </div>
+      )
     }
   }
 
@@ -199,32 +354,17 @@ const WalrusCodebaseBrowser: React.FC<WalrusCodebaseBrowserProps> = ({ blobId, c
             />
           </div>
 
-          {/* File List */}
+          {/* File Tree */}
           <div className="max-h-96 overflow-y-auto">
-            {filteredFiles.map((file) => (
-              <div
-                key={file.path}
-                onClick={() => handleFileSelect(file.path)}
-                className={`p-3 border-b border-gray-100 cursor-pointer hover:bg-gray-50 transition-colors ${
-                  selectedFile?.filePath === file.path ? 'bg-blue-50 border-blue-200' : ''
-                }`}
-              >
-                <div className="flex items-center space-x-2">
-                  <span className="text-lg">{getFileIcon(file.path)}</span>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium text-gray-900 truncate">
-                      {file.path.split('/').pop()}
-                    </div>
-                    <div className="text-xs text-gray-500 truncate">
-                      {file.path}
-                    </div>
-                    <div className="text-xs text-gray-400">
-                      {formatFileSize(file.size)}
-                    </div>
-                  </div>
-                </div>
+            {fileTree.length > 0 ? (
+              <div className="py-2">
+                {fileTree.map(node => renderTreeNode(node))}
               </div>
-            ))}
+            ) : (
+              <div className="p-4 text-center text-gray-500">
+                {searchTerm ? 'No files match your search' : 'No files found'}
+              </div>
+            )}
           </div>
         </div>
 
