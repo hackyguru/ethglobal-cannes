@@ -5,19 +5,27 @@ import { Address } from 'viem'
 import { resolveL2PrimaryName, formatAddress } from '@/lib/ensUtils'
 import SetPrimaryName from '@/components/SetPrimaryName'
 import dynamic from 'next/dynamic'
+import Head from 'next/head'
 
 // Dynamically import the wallet-connected dashboard to prevent hydration errors
 const WalletConnectedDashboard = dynamic(() => import('@/components/WalletConnectedDashboard'), {
   ssr: false,
   loading: () => (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-      <div className="bg-white rounded-lg shadow-lg p-8 max-w-md mx-auto">
-        <div className="flex items-center justify-center space-x-2">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
-          <span className="text-lg text-gray-700">Loading Dashboard...</span>
+    <>
+      <Head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet" />
+      </Head>
+      <div className="min-h-screen flex items-center justify-center" style={{ background: 'linear-gradient(to bottom right, #ebebeb, #ffffff)' }}>
+        <div className="bg-white/70 backdrop-blur-md rounded-lg shadow-lg p-8 max-w-md mx-auto border border-gray-300/50">
+          <div className="flex items-center justify-center space-x-2">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2" style={{ borderColor: '#9dff00' }}></div>
+            <span className="text-lg" style={{ color: '#1b1b1b' }}>Loading Dashboard...</span>
+          </div>
         </div>
       </div>
-    </div>
+    </>
   ),
 })
 
@@ -85,28 +93,42 @@ export default function Dashboard() {
 
   if (!mounted) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="bg-white rounded-lg shadow-lg p-8 max-w-md mx-auto">
-          <div className="flex items-center justify-center space-x-2">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
-            <span className="text-lg text-gray-700">Loading...</span>
+      <>
+        <Head>
+          <link rel="preconnect" href="https://fonts.googleapis.com" />
+          <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+          <link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet" />
+        </Head>
+        <div className="min-h-screen flex items-center justify-center" style={{ background: 'linear-gradient(to bottom right, #ebebeb, #ffffff)' }}>
+          <div className="bg-white/70 backdrop-blur-md rounded-lg shadow-lg p-8 max-w-md mx-auto border border-gray-300/50">
+            <div className="flex items-center justify-center space-x-2">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2" style={{ borderColor: '#9dff00' }}></div>
+              <span className="text-lg" style={{ color: '#1b1b1b' }}>Loading...</span>
+            </div>
           </div>
         </div>
-      </div>
+      </>
     )
   }
 
   // Show SetPrimaryName component if user wants to set one
   if (showSetPrimaryName) {
     return (
-      <div className="min-h-screen bg-gray-50">
-        <div className="container mx-auto px-4 py-8">
-          <SetPrimaryName
-            onSuccess={handlePrimaryNameSet}
-            onClose={() => setShowSetPrimaryName(false)}
-          />
+      <>
+        <Head>
+          <link rel="preconnect" href="https://fonts.googleapis.com" />
+          <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+          <link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet" />
+        </Head>
+        <div className="min-h-screen" style={{ background: 'linear-gradient(to bottom right, #ebebeb, #ffffff)' }}>
+          <div className="container mx-auto px-4 py-8">
+            <SetPrimaryName
+              onSuccess={handlePrimaryNameSet}
+              onClose={() => setShowSetPrimaryName(false)}
+            />
+          </div>
         </div>
-      </div>
+      </>
     )
   }
 

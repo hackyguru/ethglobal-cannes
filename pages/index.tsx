@@ -5,83 +5,43 @@ import { useAccount, useConnect, useDisconnect } from 'wagmi'
 import { Address } from 'viem'
 import { resolveL2PrimaryName, formatAddress } from '@/lib/ensUtils'
 import SetPrimaryName from '@/components/SetPrimaryName'
+import Head from 'next/head'
 
 // Dynamically import the wallet-connected component to prevent hydration errors
 const WalletConnectedHome = dynamic(() => import('@/components/WalletConnectedHome'), {
   ssr: false,
   loading: () => (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
-      {/* Header */}
-      <header className="bg-white shadow-sm">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-2">
-              <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
-                <span className="text-white font-bold text-lg">G</span>
+    <>
+      <Head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet" />
+      </Head>
+      <div className="min-h-screen text-[#1b1b1b]" style={{ background: 'linear-gradient(to bottom right, #ebebeb, #ffffff)' }}>
+        <div className="absolute top-8 right-8">
+          <div className="bg-gray-300 h-10 w-32 rounded-xl animate-pulse"></div>
+        </div>
+        <div className="container mx-auto px-8 py-16 min-h-screen flex items-center">
+          <div className="w-full max-w-7xl mx-auto">
+            <div className="flex justify-center">
+              <div className="space-y-8 max-w-2xl">
+                <div className="space-y-4 text-center">
+                  <h1 className="text-8xl font-black leading-none tracking-tight" style={{ color: '#1b1b1b', fontFamily: 'VT323, monospace' }}>
+                    GitVault
+                  </h1>
+                  <p className="text-xl leading-relaxed" style={{ color: '#1b1b1b' }}>
+                    Your secure, decentralized code repository platform with blockchain-backed storage and ENS integration.
+                  </p>
+                </div>
+                <div className="animate-pulse flex justify-center">
+                  <div className="bg-gray-300 h-14 w-48 rounded-xl"></div>
+                </div>
               </div>
-              <h1 className="text-2xl font-bold text-gray-800">GitVault</h1>
-            </div>
-            
-            <div className="flex items-center space-x-4">
-              <div className="animate-pulse bg-gray-200 h-10 w-32 rounded-lg"></div>
             </div>
           </div>
         </div>
-      </header>
-
-      {/* Hero Section */}
-      <main className="container mx-auto px-4 py-16">
-        <div className="text-center max-w-4xl mx-auto">
-          <h1 className="text-5xl font-bold text-gray-800 mb-6">
-            Welcome to <span className="text-blue-600">GitVault</span>
-          </h1>
-          <p className="text-xl text-gray-600 mb-8">
-            Your secure, decentralized Git repository platform powered by Base Sepolia
-          </p>
-          <p className="text-lg text-gray-500 mb-12">
-            Store, manage, and collaborate on your code with blockchain-backed security and ENS primary names
-          </p>
-          
-          <div className="space-y-4">
-            <p className="text-gray-600">Loading wallet connection...</p>
-            <div className="animate-pulse bg-gray-200 h-12 w-48 rounded-lg mx-auto"></div>
-          </div>
-        </div>
-
-        {/* Features Section */}
-        <div className="mt-24 grid md:grid-cols-3 gap-8">
-          <div className="bg-white rounded-lg shadow-lg p-6">
-            <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mb-4">
-              <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            </div>
-            <h3 className="text-xl font-semibold text-gray-800 mb-2">Secure Storage</h3>
-            <p className="text-gray-600">Your repositories are secured by blockchain technology and Base Sepolia network</p>
-          </div>
-          
-          <div className="bg-white rounded-lg shadow-lg p-6">
-            <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mb-4">
-              <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20a3 3 0 003-3v-2a3 3 0 00-6 0v2a3 3 0 003 3zm8-8a3 3 0 11-6 0 3 3 0 016 0z" />
-              </svg>
-            </div>
-            <h3 className="text-xl font-semibold text-gray-800 mb-2">ENS Integration</h3>
-            <p className="text-gray-600">Use your ENS primary name for seamless identity management across the platform</p>
-          </div>
-          
-          <div className="bg-white rounded-lg shadow-lg p-6">
-            <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center mb-4">
-              <svg className="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-              </svg>
-            </div>
-            <h3 className="text-xl font-semibold text-gray-800 mb-2">Lightning Fast</h3>
-            <p className="text-gray-600">Built on Base Sepolia for fast, low-cost transactions and optimal performance</p>
-          </div>
-        </div>
-      </main>
-    </div>
+      </div>
+    </>
   ),
 })
 
@@ -189,93 +149,204 @@ export default function Home() {
   // Show SetPrimaryName component if user wants to set one
   if (showSetPrimaryName) {
     return (
-      <div className="min-h-screen bg-gray-50">
-        <div className="container mx-auto px-4 py-8">
-          <SetPrimaryName
-            onSuccess={handlePrimaryNameSet}
-            onClose={() => setShowSetPrimaryName(false)}
-          />
+      <>
+        <Head>
+          <link rel="preconnect" href="https://fonts.googleapis.com" />
+          <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+          <link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet" />
+        </Head>
+        <div className="min-h-screen" style={{ background: 'linear-gradient(to bottom right, #ebebeb, #ffffff)' }}>
+          <div className="container mx-auto px-4 py-8">
+            <SetPrimaryName
+              onSuccess={handlePrimaryNameSet}
+              onClose={() => setShowSetPrimaryName(false)}
+            />
+          </div>
         </div>
-      </div>
+      </>
     )
   }
 
   if (!mounted) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
-        {/* Header */}
-        <header className="bg-white shadow-sm">
-          <div className="container mx-auto px-4 py-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-2">
-                <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
-                  <span className="text-white font-bold text-lg">G</span>
+      <>
+        <Head>
+          <link rel="preconnect" href="https://fonts.googleapis.com" />
+          <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+          <link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet" />
+        </Head>
+        <div className="min-h-screen text-[#1b1b1b]" style={{ background: 'linear-gradient(to bottom right, #ebebeb, #ffffff)' }}>
+          <div className="absolute top-8 right-8">
+            <div className="bg-gray-300 h-10 w-32 rounded-xl animate-pulse"></div>
+          </div>
+          <div className="container mx-auto px-8 py-16 min-h-screen flex items-center">
+            <div className="w-full max-w-7xl mx-auto">
+              <div className="flex justify-center">
+                <div className="space-y-8 max-w-2xl">
+                  <div className="space-y-4 text-center">
+                    <h1 className="text-8xl font-black leading-none tracking-tight" style={{ color: '#1b1b1b', fontFamily: 'VT323, monospace' }}>
+                      GitVault
+                    </h1>
+                    <p className="text-xl leading-relaxed" style={{ color: '#1b1b1b' }}>
+                      Your secure, decentralized code repository platform with blockchain-backed storage and ENS integration.
+                    </p>
+                  </div>
+                  <div className="animate-pulse flex justify-center">
+                    <div className="bg-gray-300 h-14 w-48 rounded-xl"></div>
+                  </div>
                 </div>
-                <h1 className="text-2xl font-bold text-gray-800">GitVault</h1>
-              </div>
-              
-              <div className="flex items-center space-x-4">
-                <div className="animate-pulse bg-gray-200 h-10 w-32 rounded-lg"></div>
               </div>
             </div>
           </div>
-        </header>
-
-        {/* Hero Section */}
-        <main className="container mx-auto px-4 py-16">
-          <div className="text-center max-w-4xl mx-auto">
-            <h1 className="text-5xl font-bold text-gray-800 mb-6">
-              Welcome to <span className="text-blue-600">GitVault</span>
-            </h1>
-            <p className="text-xl text-gray-600 mb-8">
-              Your secure, decentralized Git repository platform powered by Base Sepolia
-            </p>
-            <p className="text-lg text-gray-500 mb-12">
-              Store, manage, and collaborate on your code with blockchain-backed security and ENS primary names
-            </p>
-            
-            <div className="space-y-4">
-              <p className="text-gray-600">Loading...</p>
-              <div className="animate-pulse bg-gray-200 h-12 w-48 rounded-lg mx-auto"></div>
-            </div>
-          </div>
-
-          {/* Features Section */}
-          <div className="mt-24 grid md:grid-cols-3 gap-8">
-            <div className="bg-white rounded-lg shadow-lg p-6">
-              <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mb-4">
-                <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
-              <h3 className="text-xl font-semibold text-gray-800 mb-2">Secure Storage</h3>
-              <p className="text-gray-600">Your repositories are secured by blockchain technology and Base Sepolia network</p>
-            </div>
-            
-            <div className="bg-white rounded-lg shadow-lg p-6">
-              <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mb-4">
-                <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20a3 3 0 003-3v-2a3 3 0 00-6 0v2a3 3 0 003 3zm8-8a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-              </div>
-              <h3 className="text-xl font-semibold text-gray-800 mb-2">ENS Integration</h3>
-              <p className="text-gray-600">Use your ENS primary name for seamless identity management across the platform</p>
-            </div>
-            
-            <div className="bg-white rounded-lg shadow-lg p-6">
-              <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center mb-4">
-                <svg className="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                </svg>
-              </div>
-              <h3 className="text-xl font-semibold text-gray-800 mb-2">Lightning Fast</h3>
-              <p className="text-gray-600">Built on Base Sepolia for fast, low-cost transactions and optimal performance</p>
-            </div>
-          </div>
-        </main>
-      </div>
+        </div>
+      </>
     )
   }
 
-  return <WalletConnectedHome />
+  return (
+    <>
+      <Head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet" />
+      </Head>
+      <div className="min-h-screen text-[#1b1b1b]" style={{ background: 'linear-gradient(to bottom right, #ebebeb, #ffffff)' }}>
+        {/* Top Right Corner - Connect Wallet */}
+        <div className="absolute top-8 right-8 flex items-center space-x-4">
+          {!isConnected ? (
+            <button
+              onClick={handleConnect}
+              className="px-6 py-3 rounded-xl font-bold transition-all duration-300 hover:scale-105 shadow-lg hover:shadow-xl"
+              style={{ 
+                backgroundColor: '#9dff00', 
+                color: '#1b1b1b' 
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = '#8ae600'
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = '#9dff00'
+              }}
+            >
+              Connect Wallet
+            </button>
+          ) : (
+            <div className="flex items-center space-x-4">
+              <div className="flex items-center space-x-2">
+                <div className="w-2 h-2 rounded-full animate-pulse" style={{ backgroundColor: '#9dff00' }}></div>
+                <span className="text-sm font-medium" style={{ color: '#1b1b1b' }}>
+                  {formatAddress(address as Address)}
+                </span>
+              </div>
+              <button
+                onClick={handleDisconnect}
+                className="text-sm transition-colors opacity-60 hover:opacity-80"
+                style={{ color: '#1b1b1b' }}
+              >
+                Disconnect
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Main Content */}
+        <div className="container mx-auto px-8 py-16 min-h-screen flex items-center">
+          <div className="w-full max-w-7xl mx-auto">
+            <div className="flex justify-center">
+              <div className="space-y-8 max-w-2xl">
+                <div className="space-y-4 text-center">
+                  <h1 className="text-8xl font-black leading-none tracking-tight" style={{ color: '#1b1b1b', fontFamily: 'VT323, monospace' }}>
+                    GitVault
+                  </h1>
+                  <p className="text-xl leading-relaxed" style={{ color: '#1b1b1b' }}>
+                    Secure your code repositories with decentralized storage powered by blockchain technology and ENS integration.
+                  </p>
+                </div>
+                
+                {/* Status Display */}
+                <div className="space-y-4 flex flex-col items-center">
+                  {!isConnected ? (
+                    <div className="text-center">
+                      <p className="text-sm opacity-60" style={{ color: '#1b1b1b' }}>
+                        Connect your wallet to start securing your repositories
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-4 text-center">
+                      {isResolvingName ? (
+                        <div className="flex items-center justify-center space-x-2">
+                          <div 
+                            className="animate-spin rounded-full h-4 w-4 border-2 border-t-transparent"
+                            style={{ borderColor: '#9dff00' }}
+                          ></div>
+                          <span className="opacity-60" style={{ color: '#1b1b1b' }}>Resolving ENS name...</span>
+                        </div>
+                      ) : (
+                        <div className="space-y-4">
+                          {l2PrimaryName ? (
+                            <div className="space-y-2">
+                              <p className="font-medium" style={{ color: '#9dff00' }}>
+                                Welcome back, {l2PrimaryName}
+                              </p>
+                              <button
+                                onClick={handleProceedToDashboard}
+                                className="px-8 py-4 rounded-xl font-bold text-lg transition-all duration-300 hover:scale-105 shadow-lg hover:shadow-xl"
+                                style={{ 
+                                  backgroundColor: '#9dff00', 
+                                  color: '#1b1b1b' 
+                                }}
+                                onMouseEnter={(e) => {
+                                  e.currentTarget.style.backgroundColor = '#8ae600'
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.currentTarget.style.backgroundColor = '#9dff00'
+                                }}
+                              >
+                                Enter Dashboard
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="space-y-3">
+                              <p className="opacity-60" style={{ color: '#1b1b1b' }}>
+                                Set up your ENS primary name for the full experience
+                              </p>
+                              <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-4 justify-center">
+                                <button
+                                  onClick={handleSetupPrimaryName}
+                                  className="px-6 py-3 rounded-xl font-bold transition-all duration-300 hover:scale-105 shadow-lg"
+                                  style={{ 
+                                    backgroundColor: '#9dff00', 
+                                    color: '#1b1b1b' 
+                                  }}
+                                  onMouseEnter={(e) => {
+                                    e.currentTarget.style.backgroundColor = '#8ae600'
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    e.currentTarget.style.backgroundColor = '#9dff00'
+                                  }}
+                                >
+                                  Setup ENS Name
+                                </button>
+                                <button
+                                  onClick={() => router.push('/dashboard')}
+                                  className="px-6 py-3 rounded-xl font-bold transition-all duration-300 hover:scale-105 shadow-lg bg-gray-300 hover:bg-gray-400"
+                                  style={{ color: '#1b1b1b' }}
+                                >
+                                  Skip for Now
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
+  )
 }
